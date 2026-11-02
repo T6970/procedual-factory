@@ -1,0 +1,276 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Factory</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#fff;--fg:#222;--pn:#f4f4f4;--bd:#bbb}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#fff;--fg:#222;--pn:#f4f4f4;--bd:#bbb}}
+body{margin:0;overflow:hidden;background:var(--bg);color:var(--fg);font:13px system-ui,sans-serif}
+canvas{display:block}
+.bar{display:flex;gap:4px;padding:5px;background:var(--pn);border:1px solid var(--bd);border-radius:6px;max-width:92vw;flex-wrap:wrap;justify-content:center}
+#wrap{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(8px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;gap:6px;max-width:96vw}#top{display:none}
+button{background:#fff;color:#222;border:1px solid #999;border-radius:4px;padding:5px 9px;cursor:pointer;font:inherit}
+button:hover{background:#e8e8e8}button:disabled{opacity:.4}
+#mb{position:fixed;left:8px;top:calc(8px + env(safe-area-inset-top,0px))}
+#menu,#res{position:fixed;background:var(--pn);border:1px solid var(--bd);border-radius:8px;padding:12px;display:none;flex-direction:column;gap:6px}
+#menu{left:50%;top:50%;transform:translate(-50%,-50%)}
+#res{right:8px;top:50px;max-height:60vh;overflow:auto;max-width:360px}
+#hud{position:fixed;right:8px;top:calc(8px + env(safe-area-inset-top,0px));font-size:12px;text-align:right;pointer-events:none}
+.chip{display:inline-block;padding:0 5px;margin:0 2px;border-radius:8px;color:#fff;font-size:11px}
+.row{border-bottom:1px solid #ddd;padding:3px 0}
+#tt{position:fixed;display:none;pointer-events:none;background:#fff;color:#222;border:1px solid #999;border-radius:6px;padding:5px 8px;font-size:12px;max-width:240px}
+#dlg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);background:var(--pn);border:1px solid var(--bd);border-radius:8px;padding:12px;display:none;flex-direction:column;gap:6px;z-index:5}
+</style></head><body>
+<canvas id="c"></canvas>
+<button id="mb">☰ Menu</button>
+<div id="hud"></div>
+<div id="wrap"><div id="top" class="bar"></div><div id="bot" class="bar"></div></div>
+<div id="res"></div><div id="tt"></div>
+<div id="menu"><b>Paused</b><button id="cont">Continue</button><button id="save">Save</button><button id="load">Load</button><span id="seedShow"></span><input id="seedIn" placeholder="Seed (blank = random)"><button id="nw">New world</button><label><input type="checkbox" id="dev"> Developer mode</label><button id="exit">Exit</button><input type="file" id="file" hidden></div>
+<script>
+const TY=['conveyor','bridge','extractor','factory','generator','lab'],NI=10;
+const cv=document.getElementById('c'),g=cv.getContext('2d'),$=id=>document.getElementById(id);
+let seed=Date.now(),W,H;
+function rnd(id,k){let t=(seed+id*374761393+k*668265263)|0;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}
+const ic=i=>`hsl(${Math.floor(rnd(i,700)*360)},${55+Math.floor(rnd(i,701)*35)}%,${38+Math.floor(rnd(i,702)*17)}%)`;
+const raw=n=>n<=3||rnd(n,800)>=.3;
+const own=x=>{const k='own'+x;if(D[k]!==undefined)return D[k];let f=Math.max(1,x-4+Math.floor(rnd(x,801)*3));for(;;){let c=false;for(let y=Math.max(4,f+2);y<=f+4&&y<x;y++)if(!raw(y)&&own(y)==f){c=true;break}if(!c)break;f++}return D[k]=f};
+let D={};
+function def(t,id){const k=t+id;if(D[k])return D[k];if(t=='extractor'&&id>1&&!D['extractor'+(id-1)])for(let i=1;i<id;i++)def(t,i);const T=TY.indexOf(t),R=n=>rnd(id,T*20+n),RI=(n,m)=>1+Math.floor(R(n)*m),SZ=(n,k=1)=>id<=1?1:Math.max(1,Math.round(k*2*Math.pow(id,.30103)*(.85+.3*R(n))));
+const cost=(m,s=1)=>{const o={};if(id==1)return o;for(let i=0;i<1+(R(9)>.5)+Math.floor(id/8);i++)o[RI(10+i,m)]=Math.ceil((5+R(12+i)*15)*s*Math.sqrt(Math.abs(id)))*1;return o};
+let d;
+if(t=='conveyor')d=id==-1?{speed:50,cap:0,size:1,color:'#333',cost:{1:10}}:{speed:+(1+.8*(id-1)+R(1)*.5).toFixed(2),cap:+(2+.8*(id-1)+R(2)*.5).toFixed(1),size:SZ(3,.5),color:`hsl(${Math.floor(R(4)*360)},60%,50%)`,cost:cost((3+id))};
+else if(t=='bridge'){const c=def('conveyor',id>0?id:1);d={...c,cost:id==1?{}:cost((3+id),1.5),direction:0,range:1+id}}
+else if(t=='extractor'){const own=id==1?[1,2,3]:[RI(1,3+id),RI(2,3+id)];let ty=own;if(id>1){const inh=def('extractor',id-1).types.slice(),dr=Math.floor(R(6)*3);for(let q=0;q<dr&&inh.length>1;q++)inh.splice(Math.floor(R(7+q)*inh.length),1);ty=inh.concat(own)}ty=[...new Set(ty)].filter(raw);if(!ty.length)ty=[1,2,3];d={speed:+(.5+.6*(id-1)+R(3)*.4).toFixed(2),types:ty,size:SZ(4),cost:cost((3+id))}}
+else if(t=='factory'){const inp={},a=RI(1,(3+id));inp[a]=RI(2,3+Math.floor(id/3));if(R(3)>.5){const b=RI(4,(3+id));if(b!=a)inp[b]=RI(5,2+Math.floor(id/4))}
+let o=RI(6,4+id);while(inp[o])o++;const c=cost((3+id),1.3);
+for(const x of Object.keys(c)){if(+x==o){let ok=false;for(let i=1;i<id;i++)if(def('factory',i).output[o])ok=true;if(!ok){const v=c[x];delete c[x];c[o+1]=v}}}
+d={input:inp,output:{[o]:1+Math.floor((id-1)/2)+(R(7)>.5?1:0)},size:SZ(9),cost:c};
+let n=0;{for(let x=Math.max(4,id-4);x<=id+4&&!n;x++)if(!raw(x)&&own(x)==id)n=x;
+if(n){if(inp[n]){delete inp[n];if(!Object.keys(inp).length)inp[1]=1}const amt=Object.values(d.output)[0];d.output={[n]:amt};if(c[n]){const v=c[n];delete c[n];c[n+1]=v}}}
+if(id>1&&!n&&R(22)<.1){const bi=1+Math.floor(R(23)*(id-1)),b=def('factory',bi),o2=+Object.keys(b.output)[0],ni={...b.input},k=1+Math.floor(R(24)*3),po=R(25)<.3;
+if(!po)for(let z=0;z<k;z++){const it=RI(26+z,3+id);if(it!=o2)ni[it]=(ni[it]||0)+RI(30+z,2+Math.floor(id/4))}
+d.input=ni;d.output={[o2]:Math.ceil(b.output[o2]*(2+R(29)))};d.upOf=bi;d.upPow=po;d.size=Math.max(b.size,d.size)}}
+else if(t=='generator'){if(id<0){const s=-id;d={battery:true,storage:[0,1000,5000,20000][s],size:s,cost:[0,{1:20},{1:60,2:30},{1:150,2:80,3:40}][s]}}
+else{const inp=id==1?{}:{[RI(1,(3+id))]:RI(2,2+Math.floor(id/4))};d={input:inp,output:id==1?20:Math.round(30*id+20*R(3)),kick:id==1?0:Math.floor(R(4)*(5+id)),size:SZ(5),cost:cost((3+id),1.2)}}}
+else d={speed:+(1+.8*(id-1)+R(1)*.5).toFixed(2),size:SZ(2),cost:cost((3+id))};
+d.power=(t=='generator'||(t=='conveyor'&&id==-1)||id==1||R(17)<.5+.5/Math.abs(id))?0:Math.max(10,Math.ceil(R(18)*(10+id))*10);if(d.upOf){const bp=def('factory',d.upOf).power;d.power=d.upPow?Math.max(10,bp*2):Math.max(bp,d.power)}d.t=t;d.id=id;return D[k]=d}
+const spec=t=>t=='conveyor'?[-1]:t=='generator'?[-1,-2,-3]:[];
+const cands=t=>{const a=spec(t).filter(i=>!done[t+i]);let n=0;for(let i=1;n<3;i++)if(!done[t+i]){a.push(i);n++}return a};
+// world
+let deps,blocks,occ,pool,done,cam,zoom=40,paused=false,mode=null,rot=0,curType=null,dirty=true,sat=1,mx=0,my=0,keys={};
+function init(){D={};deps={};genned=new Set();bossReset();blocks=[];occ={};pool={};done={};cam={x:0,y:0};dirty=true;
+for(const t of TY)done[t+1]=1;done['conveyor-1']=1;
+for(let i=0;i<NI*8;i++){const it=1+i%NI,an=rnd(i,902)*6.283,dist=(it-1)*14+4+rnd(i,903)*10,cx=Math.floor(Math.cos(an)*dist),cy=Math.floor(Math.sin(an)*dist),r=2+rnd(i,904)*2.5,m=+(.5+rnd(i,905)*1.5).toFixed(2);
+if(!raw(it))continue;for(let x=-6;x<=6;x++)for(let y=-6;y<=6;y++)if(x*x+y*y<=r*r&&rnd(i*100+x*13+y,906)>.15)deps[(cx+x)+','+(cy+y)]={item:it,mult:m}}}
+const fr=(b)=>{const s=b.d.size,h=Math.floor((s-1)/2);return[[b.x+h,b.y-1],[b.x+s,b.y+h],[b.x+h,b.y+s],[b.x-1,b.y+h]][b.rot]};
+const at=(x,y)=>occ[x+','+y];
+const tot=b=>{let s=0;for(const k in b.inv)s+=b.inv[k];return s};
+const dirOk=d=>(d.t=='conveyor'&&d.id!=-1)||d.t=='bridge';
+const isRouter=b=>b&&b.d.t=='conveyor'&&b.d.id==-1;
+const RV=new Set();let RD=0;
+function accept(b,src,it,a){if(!b||b===src)return 0;const d=b.d,t=d.t;
+if(t=='conveyor'||t=='bridge'){if(isRouter(b)){if(RV.has(b))return 0;RV.add(b);RD++;let n=0;const nb=[[b.x,b.y-1],[b.x+1,b.y],[b.x,b.y+1],[b.x-1,b.y]];b.rr=((b.rr||0)+1)%4;
+for(let q=0;q<4&&n<a-1e-9;q++){const[x,y]=nb[(q+b.rr)%4],o=at(x,y);if(!o||o===src)continue;if(!isRouter(o)&&(o.d.t=='conveyor'||o.d.t=='bridge')){const f=fr(o);if(at(f[0],f[1])===b)continue}n+=accept(o,b,it,a-n)}
+RD--;if(!RD)RV.clear();return n}
+{const f=fr(b);if(at(f[0],f[1])===src)return 0}const q=Math.min(a,d.cap-tot(b));if(q<=0)return 0;b.inv[it]=(b.inv[it]||0)+q;const Q=b.q||(b.q=[]),L=Q[Q.length-1];if(L&&L.it==it&&L.p<.08)L.a+=q;else Q.push({it,a:q,p:0});return q}
+if(t=='factory'){const need=(d.input[it]||0)*2-(b.inv[it]||0);if(need<=0)return 0;const q=Math.min(a,need);b.inv[it]=(b.inv[it]||0)+q;return q}
+if(t=='generator'&&!d.battery){const need=(d.input[it]||0)*2-(b.inv[it]||0);if(need<=0)return 0;const q=Math.min(a,need);b.inv[it]=(b.inv[it]||0)+q;return q}
+if(t=='lab'){const q=Math.min(a,20-tot(b));if(q<=0)return 0;b.inv[it]=(b.inv[it]||0)+q;return q}return 0}
+function push(b,budget,noRouter,tgt){const f=tgt||fr(b),o=tgt?tgt:at(f[0],f[1]);if(!o||(noRouter&&isRouter(o)))return;
+for(const it in b.inv){if(budget<=0)break;const a=accept(o,b,+it,Math.min(b.inv[it],budget));b.inv[it]-=a;budget-=a;if(b.inv[it]<1e-9)delete b.inv[it]}}
+let C=[],PW={P:0,U:0};
+function comps(){const seen=new Set();C=[];for(const b of blocks){if(seen.has(b))continue;const c={bs:[]};C.push(c);const q=[b];seen.add(b);while(q.length){const o=q.pop();c.bs.push(o);const s=o.d.size;for(let i=0;i<s;i++)for(let j=0;j<s;j++)for(const[dx,dy]of[[0,-1],[1,0],[0,1],[-1,0]]){const n=at(o.x+i+dx,o.y+j+dy);if(n&&!seen.has(n)){seen.add(n);q.push(n)}}}}dirty=false}
+function step(dt){if(dirty)comps();let P=0,U=0;
+for(const c of C){let prod=0,cons=0,cap=0,st=0;
+for(const b of c.bs){if(b.d.battery){cap+=b.d.storage;st+=b.charge||0}}
+for(const b of c.bs){const d=b.d;cons+=d.power||0;if(d.t=='generator'&&!d.battery){if(b.run>0){b.run-=dt;prod+=d.output}
+if(b.run<=0){let ok=true;for(const k in d.input)if((b.inv[k]||0)<d.input[k])ok=false;if(ok&&(d.kick==0||st>=d.kick)){for(const k in d.input)b.inv[k]-=d.input[k];b.run=1;if(d.kick)st-=d.kick}}}}
+let s=1;if(cons<=prod)st=Math.min(cap,st+(prod-cons)*dt);else if(st>0)st=Math.max(0,st-(cons-prod)*dt);else s=prod/cons;
+for(const b of c.bs){b.sat=b.d.power?s:1;if(b.d.battery)b.charge=cap?st*b.d.storage/cap:0}
+P+=prod;U+=cons}
+PW={P,U};
+for(const b of blocks){const d=b.d,t=d.t;
+if(t=='conveyor'&&!isRouter(b))pushQ(b,dt,null);
+else if(t=='bridge'){const dx=[0,1,0,-1][b.rot],dy=[-1,0,1,0][b.rot];let tg=null;for(let i=1;i<=d.range+1;i++){const o=at(b.x+dx*i,b.y+dy*i);if(o&&o!==b&&o.d.t=='bridge'){tg=o;break}if(o&&i==1)break}
+pushQ(b,dt,tg)}
+else if(t=='extractor'&&b.item){if(tot(b)<10)b.inv[b.item]=(b.inv[b.item]||0)+d.speed*b.mult*b.sat*dt;{const bud=d.speed*2*dt,s=d.size,seen=new Set();for(let i=-1;i<=s;i++)for(let j=-1;j<=s;j++){if((i<0||i==s)==(j<0||j==s))continue;const o=at(b.x+i,b.y+j);if(!o||seen.has(o))continue;seen.add(o);push(b,bud,false,o)}}}
+else if(t=='factory'){let ok=tot(b)<10;for(const k in d.input)if((b.inv[k]||0)<d.input[k])ok=false;
+if(ok){b.prog=(b.prog||0)+dt*b.sat;if(b.prog>=1){b.prog=0;for(const k in d.input)b.inv[k]-=d.input[k];for(const k in d.output)b.inv[k]=(b.inv[k]||0)+d.output[k]}}
+for(const k in b.inv)if(!d.input[k]){const s=d.size,seen=new Set();let bud=4*dt;for(let i=-1;i<=s&&bud>0;i++)for(let j=-1;j<=s;j++){if((i<0||i==s)==(j<0||j==s))continue;const o=at(b.x+i,b.y+j);if(!o||seen.has(o)||isRouter(o))continue;seen.add(o);const a=accept(o,b,+k,Math.min(b.inv[k],bud));b.inv[k]-=a;bud-=a}}}
+else if(t=='lab'){let m=d.speed*dt*b.sat;for(const k in b.inv){const a=Math.min(b.inv[k],m);b.inv[k]-=a;m-=a;pool[k]=(pool[k]||0)+a;if(m<=0)break}}}}
+// drawing
+function shape(d,x,y,rt,al,bad){const s=d.size||1,px=s*zoom,cx=(x-cam.x+s/2)*zoom+W/2-0,cy=(y-cam.y+s/2)*zoom+H/2,t=d.t;
+g.save();g.translate(cx,cy);g.rotate((rt-(t=='conveyor'?1:0))*Math.PI/2);g.globalAlpha=al;
+const col=bad?'#e33':t=='conveyor'||t=='bridge'?d.color:ic(d.id*3+TY.indexOf(t)),h=px/2*.9;g.fillStyle=col;g.strokeStyle='#222';g.lineWidth=1.5;g.beginPath();
+if(t=='conveyor'&&d.id==-1){for(let i=0;i<8;i++){const a=(i+.5)*Math.PI/4;g.lineTo(Math.cos(a)*h,Math.sin(a)*h)}g.closePath();g.fill();g.stroke()}
+else if(t=='conveyor'){g.fillRect(-h,-h*.45,h*2,h*.25);g.fillRect(-h,h*.2,h*2,h*.25);g.beginPath();g.moveTo(h,0);g.lineTo(h*.5,-h*.35);g.lineTo(h*.5,h*.35);g.fill()}
+else if(t=='bridge'){g.moveTo(0,-h);g.lineTo(h,h);g.lineTo(-h,h);g.closePath();g.fill();g.stroke()}
+else if(t=='extractor'){g.moveTo(0,-h*1.1);g.lineTo(h*1.1,0);g.lineTo(0,h*1.1);g.lineTo(-h*1.1,0);g.closePath();g.fill();g.stroke();}
+else if(t=='factory'){g.fillRect(-h,-h,h*2,h*2);g.strokeRect(-h,-h,h*2,h*2)}
+else if(t=='generator'){g.arc(0,0,h,0,7);g.fill();g.stroke()}
+else{for(let i=0;i<6;i++){const a=i*Math.PI/3;g.lineTo(Math.cos(a)*h,Math.sin(a)*h)}g.closePath();g.fill();g.stroke()}
+g.restore();
+if(zoom>22&&t!='conveyor'){g.save();g.globalAlpha=al;g.fillStyle='#fff';g.font=`${Math.min(14,zoom*.4)}px sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(d.id,cx,cy);g.restore()}}
+let genned=new Set();const CH=24;
+function ensure(x0,y0,x1,y1){for(let cx=Math.floor(x0/CH);cx<=Math.floor(x1/CH);cx++)for(let cy=Math.floor(y0/CH);cy<=Math.floor(y1/CH);cy++){const key=cx+','+cy;if(genned.has(key))continue;genned.add(key);const dd=Math.hypot((cx+.5)*CH,(cy+.5)*CH);if(dd<160)continue;const cid=cx*73856+cy*19349;
+for(let q=0;q<3;q++){const px=cx*CH+6+Math.floor(rnd(cid,910+q)*(CH-12)),py=cy*CH+6+Math.floor(rnd(cid,920+q)*(CH-12)),d2=Math.hypot(px,py),it=Math.max(1,1+Math.floor(d2/14+(rnd(cid,930+q)-.5)*2)),r=2+rnd(cid,940+q)*3,m=+(.5+rnd(cid,950+q)*1.5).toFixed(2);
+if(!raw(it))continue;for(let x=-5;x<=5;x++)for(let y=-5;y<=5;y++)if(x*x+y*y<=r*r&&rnd(cid*31+x*13+y+q*7,960)>.15)deps[(px+x)+','+(py+y)]={item:it,mult:m}}}}
+function draw(){W=cv.width=innerWidth;H=cv.height=innerHeight;g.fillStyle='#fff';g.fillRect(0,0,W,H);
+const x0=Math.floor(cam.x-W/2/zoom),x1=Math.ceil(cam.x+W/2/zoom),y0=Math.floor(cam.y-H/2/zoom),y1=Math.ceil(cam.y+H/2/zoom);
+ensure(x0,y0,x1,y1);for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){const p=deps[x+','+y];if(p){const sx=(x-cam.x)*zoom+W/2,sy=(y-cam.y)*zoom+H/2;g.fillStyle=ic(p.item);g.globalAlpha=.25+.15*p.mult;g.fillRect(sx,sy,zoom,zoom);g.globalAlpha=1;if(zoom>26){g.fillStyle='#555';g.font='10px sans-serif';g.fillText(p.item+' ×'+p.mult,sx+3,sy+12)}}}
+if(zoom>=6){g.strokeStyle='#d3d3d3';g.lineWidth=1;g.beginPath();for(let x=x0;x<=x1;x++){const sx=Math.round((x-cam.x)*zoom+W/2)+.5;g.moveTo(sx,0);g.lineTo(sx,H)}for(let y=y0;y<=y1;y++){const sy=Math.round((y-cam.y)*zoom+H/2)+.5;g.moveTo(0,sy);g.lineTo(W,sy)}g.stroke()}
+for(const b of blocks)shape(b.d,b.x,b.y,b.rot,1,false);for(const b of blocks)dots(b);
+if(mode&&!paused){const d=def(mode.t,mode.id),p=place(d);shape(d,p.x,p.y,dirOk(d)?rot:0,.6,!p.ok)}
+g.fillStyle='#222';g.font='12px sans-serif';
+$('hud').innerHTML=`Power: ${PW.P} produced / ${PW.U} used<br>`+Object.keys(pool).filter(k=>pool[k]>=.01).map(k=>`<span class=chip style="background:${ic(k)}">${k}: ${Math.floor(pool[k])}</span>`).join('')}
+function pushQ(b,dt,tgt){const d=b.d,Q=b.q||(b.q=[]),sp=d.speed*b.sat*dt,sum={};
+for(const e of Q)sum[e.it]=(sum[e.it]||0)+e.a;for(const k in b.inv){const df=b.inv[k]-(sum[k]||0);if(df>1e-6)Q.unshift({it:+k,a:df,p:1})}
+for(const e of Q)e.p=Math.min(1,e.p+sp/(d.size||1));
+let o=tgt;if(!o){const f=fr(b);o=at(f[0],f[1])}let bud=sp;
+if(o)for(const e of Q){if(e.p<1||bud<=0)break;const x=Math.min(e.a,bud),acc=accept(o,b,+e.it,x);e.a-=acc;b.inv[e.it]-=acc;bud-=acc;if(acc<x-1e-9)break}
+for(let i=Q.length-1;i>=0;i--)if(Q[i].a<1e-9)Q.splice(i,1);
+for(const k in b.inv)if(b.inv[k]<1e-9)delete b.inv[k]}
+function dots(b){if(zoom<10)return;const d=b.d,s=d.size,cx=(b.x-cam.x+s/2)*zoom+W/2,cy=(b.y-cam.y+s/2)*zoom+H/2,a=[];for(const k in b.inv)for(let n=0;n<Math.min(8,Math.ceil(b.inv[k]*1.5));n++)a.push(k);a.length=Math.min(a.length,10);const conv=d.t=='conveyor'||d.t=='bridge',dx=[0,1,0,-1][b.rot],dy=[-1,0,1,0][b.rot],L=s*zoom*.8;
+if(conv&&b.q&&b.q.length){for(const e of b.q){const n=Math.min(3,Math.ceil(e.a*1.5));for(let i=0;i<n;i++){const ff=Math.max(-.5,e.p-.5-i*.08);g.fillStyle=ic(e.it);g.strokeStyle='#fff';g.beginPath();g.arc(cx+dx*ff*L,cy+dy*ff*L,Math.max(2,zoom*.09),0,7);g.fill();g.stroke()}}return}
+a.forEach((k,i)=>{const f=(i+.5)/Math.max(a.length,4)-.5;let x=cx,y=cy;if(conv){x+=dx*f*L;y+=dy*f*L}else{x+=f*L;y+=s*zoom*.28}g.fillStyle=ic(k);g.strokeStyle='#fff';g.beginPath();g.arc(x,y,Math.max(2,zoom*.09),0,7);g.fill();g.stroke()})}
+function place(d){const s=d.size||1,x=Math.floor((mx-W/2)/zoom+cam.x-(s-1)/2+.5-.5+(s%2?0:.5)),y=Math.floor((my-H/2)/zoom+cam.y-(s-1)/2+(s%2?0:.5));let ok=true;const cnt={},over=[];
+for(let i=0;i<s;i++)for(let j=0;j<s;j++){{const o=at(x+i,y+j);if(o){if(o.d.t!=d.t)ok=false;else if(!over.includes(o))over.push(o)}}const p=deps[(x+i)+','+(y+j)];if(p&&d.t=='extractor'&&d.types.includes(p.item)){cnt[p.item]=cnt[p.item]||{n:0,m:0};cnt[p.item].n++;cnt[p.item].m+=p.mult}}
+let item=0,mult=0;if(d.t=='extractor'){let bn=0;for(const k in cnt)if(cnt[k].n>bn){bn=cnt[k].n;item=+k;mult=cnt[k].m}if(!item)ok=false}
+return{x,y,ok,item,mult,over}}
+let drag=false,rdrag=false;const delAt=(X,Y)=>{const b=at(Math.floor((X-W/2)/zoom+cam.x),Math.floor((Y-H/2)/zoom+cam.y));if(b)del(b)};
+function tryPlace(){const d=def(mode.t,mode.id),p=place(d);if(!p.ok)return;if(isRouterDef(d)&&!boss.done&&wouldChain(p)){bossAttempt(d,p);return}if(p.over.length==1){const o=p.over[0];if(o.d===d&&o.x==p.x&&o.y==p.y&&o.rot==(dirOk(d)?rot:0))return}for(const o of p.over)del(o);add(d,p)}
+onmouseup=()=>{drag=false;rdrag=false};
+function add(d,p){const b={d,x:p.x,y:p.y,rot:dirOk(d)?rot:0,inv:{},item:p.item,mult:p.mult,run:0,sat:1,charge:0};blocks.push(b);dirty=true;for(let i=0;i<d.size;i++)for(let j=0;j<(d.size||1);j++)occ[(b.x+i)+','+(b.y+j)]=b}
+function del(b){blocks=blocks.filter(o=>o!==b);dirty=true;const s=b.d.size||1;for(let i=0;i<s;i++)for(let j=0;j<s;j++)delete occ[(b.x+i)+','+(b.y+j)]}
+// UI
+const ch=c=>Object.keys(c).map(k=>`<span class=chip style="background:${ic(k)}">${k}×${c[k]}</span>`).join('')||'free';
+function tip(d){const o={...d};delete o.color;return JSON.stringify(o).replace(/"/g,'')}
+$('bot').innerHTML=TY.map(t=>`<button data-t="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')+'<button id="rb">Research</button>';
+$('bot').onclick=e=>{if(e.target.id=='devb'){$('dlg').style.display='flex';return}const t=e.target.dataset.t;if(e.target.id=='rb'){const r=$('res');r.style.display=r.style.display=='flex'?'none':'flex';rres();return}if(!t)return;curType=t;mode=null;$('top').style.display='flex';rtop()};
+function rtop(){const ids=Object.keys(done).filter(k=>k.startsWith(curType)&&/^-?\d+$/.test(k.slice(curType.length))).map(k=>+k.slice(curType.length)).sort((a,b)=>a-b);$('top').innerHTML=ids.map(i=>`<button data-i="${i}" title="${tip(def(curType,i))}">${i}</button>`).join('')}
+$('top').onclick=e=>{const i=e.target.dataset.i;if(i!=null){mode={t:curType,id:+i};rot=0}};
+function rres(){const r=$('res');if(r.style.display!='flex')return;let h='<b>Research</b>';for(const t of TY)for(const i of cands(t)){if(done[t+i])continue;const d=def(t,i),ok=Object.keys(d.cost).every(k=>(pool[k]||0)>=d.cost[k]);h+=`<div class=row title="${tip(d)}">${t} ${i}: ${ch(d.cost)} <button data-r="${t}|${i}" ${ok?'':'disabled'}>Research</button></div>`}r.innerHTML=h}
+$('res').onclick=e=>{const v=e.target.dataset.r;if(!v)return;const[t,i]=v.split('|'),d=def(t,+i);for(const k in d.cost)pool[k]-=d.cost[k];done[t+i]=1;rres();if(curType)rtop()};
+setInterval(rres,600);
+function pause(p){$('seedShow').textContent='Seed: '+seed;paused=p;$('menu').style.display=p?'flex':'none'}
+$('mb').onclick=()=>pause(!paused);$('cont').onclick=()=>pause(false);
+function newWorld(){const v=$('seedIn').value.trim();if(v==='')seed=Date.now();else if(/^-?\d+$/.test(v))seed=parseInt(v);else{let h=0;for(const c of v)h=(Math.imul(h,31)+c.charCodeAt(0))|0;seed=h}
+init();mode=null;curType=null;$('top').style.display='none';$('res').style.display='none';$('seedIn').value='';pause(false)}
+$('nw').onclick=newWorld;
+$('bot').insertAdjacentHTML('beforeend','<button id="devb" style="display:none">Dev</button>');
+document.body.insertAdjacentHTML('beforeend','<div id="dlg"><b>Developer: instant research</b><select id="dt">'+TY.map(t=>`<option>${t}</option>`).join('')+'</select><input id="did" type="number" step="1" value="1"><button id="dgo">Research</button><button id="dcl">Close</button><span id="dmsg"></span></div>');
+$('dev').onchange=e=>{$('devb').style.display=e.target.checked?'':'none';if(!e.target.checked)$('dlg').style.display='none'};
+$('dcl').onclick=()=>$('dlg').style.display='none';
+$('dgo').onclick=()=>{const t=$('dt').value,id=parseInt($('did').value);const ok=Number.isInteger(id)&&id!=0&&(id>0||(t=='conveyor'&&id==-1)||(t=='generator'&&id>=-3));if(!ok){$('dmsg').textContent='No such block';return}done[t+id]=1;$('dmsg').textContent='Researched '+t+' '+id;if(curType==t)rtop();rres()};
+$('exit').onclick=()=>{if(confirm('Exit without saving?'))location.reload()};
+$('save').onclick=()=>{const s={seed,pool,done,blocks:blocks.filter(b=>b.d.t!='wall').map(b=>({t:b.d.t,id:b.d.id,x:b.x,y:b.y,rot:b.rot,inv:b.inv,charge:b.charge,item:b.item,mult:b.mult}))};const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(s)]));a.download='factory-save.json';a.click()};
+$('load').onclick=()=>$('file').click();
+$('file').onchange=async e=>{try{const s=JSON.parse(await e.target.files[0].text());seed=s.seed;init();pool=s.pool;done=s.done;for(const o of s.blocks){rot=o.rot;add(def(o.t,o.id),{x:o.x,y:o.y,item:o.item,mult:o.mult});blocks[blocks.length-1].inv=o.inv;blocks[blocks.length-1].charge=o.charge||0}pause(false)}catch(x){alert('Bad save file')}};
+function binfo(b){const d=b.d;let h=`<b>${d.t} ${d.id}</b>`;const ni=m=>Object.keys(m).length?ch(m):'none';if(d.t=='factory')h+=`<br>In: ${ni(d.input)}<br>Out: ${ni(d.output)}`;if(d.t=='generator'){if(d.battery)h+=`<br>Stores ${d.storage} (${Math.floor(b.charge||0)})`;else h+=`<br>In (items): ${ni(d.input)}<br>Kickstart power: ${d.kick}<br>Output: ${d.output} power`}if(d.t=='lab')h+='<br>In: any item (adds to research)';if(d.t=='extractor')h+=`<br>Needs deposit: ${d.types.join(', ')}`;if(d.power)h+=`<br>Power ${d.power} (${Math.round(b.sat*100)}% supplied)`;const iv=Object.keys(b.inv).filter(k=>b.inv[k]>.01);if(iv.length)h+='<br>Holds: '+iv.map(k=>k+'×'+b.inv[k].toFixed(1)).join(' ');return h}
+cv.onmousemove=e=>{const ox=mx,oy=my;mx=e.clientX;my=e.clientY;if(rdrag&&!mode&&!paused){const n=Math.max(1,Math.ceil(Math.hypot(mx-ox,my-oy)/(zoom*.4)));for(let k=1;k<=n;k++)delAt(ox+(mx-ox)*k/n,oy+(my-oy)*k/n)}if(drag&&mode&&!paused){const X=mx,Y=my,n=Math.max(1,Math.ceil(Math.hypot(X-ox,Y-oy)/(zoom*.4)));for(let k=1;k<=n;k++){mx=ox+(X-ox)*k/n;my=oy+(Y-oy)*k/n;tryPlace()}mx=X;my=Y}const tt=$('tt');let h='';if(!mode&&!paused){const b=at(Math.floor((mx-W/2)/zoom+cam.x),Math.floor((my-H/2)/zoom+cam.y));if(b)h=binfo(b)}tt.style.display=h?'block':'none';tt.innerHTML=h;tt.style.left=Math.min(mx+14,innerWidth-200)+'px';tt.style.top=(my+14)+'px'};
+cv.onwheel=e=>{e.preventDefault();zoom=Math.max(4,Math.min(120,zoom*(e.deltaY<0?1.1:1/1.1)))};
+cv.oncontextmenu=e=>{e.preventDefault();if(paused)return;if(mode)mode=null};
+cv.onmousedown=e=>{if(e.button==2&&!mode&&!paused){rdrag=true;delAt(e.clientX,e.clientY);return}if(e.button||!mode||paused)return;drag=true;tryPlace()};
+onkeydown=e=>{const k=e.key.toLowerCase();keys[k]=1;if(k=='r'&&mode&&dirOk(def(mode.t,mode.id)))rot=(rot+1)%4;if(k=='escape')pause(!paused)};onkeyup=e=>keys[e.key.toLowerCase()]=0;
+// ---- seeded music: leitmotifs assembled into pieces ----
+const Mu={ctx:null,seed:null,timer:null,masters:[],on:true,piece:0};
+function mrng(s){let a=s|0;return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function composeBattle(motifs,q,qp,root0){
+const sc=qp([[0,2,3,5,7,8,10],[0,1,3,5,7,8,10],[0,2,3,5,7,8,11],[0,2,3,5,7,9,10]]),L=7,root=root0>45?root0-12:root0,bpm=150+Math.floor(q()*32);
+const midi=d=>root+12*Math.floor(d/L)+sc[((d%L)+L)%L];
+const tOk=c=>{const t=(a,b)=>((midi(a)-midi(b))%12+12)%12;return[3,4].includes(t(c+2,c))&&t(c+4,c)==7};
+const progs=[[0,5,2,6],[0,5,6,4],[0,3,5,4],[0,6,5,4],[0,0,5,6],[0,2,5,4]];
+const vr=n=>{const v=qp(['same','same','up','inv','retro','fast']);let o=n.map(x=>[x[0],Math.max(.25,x[1]/2)]);const c=o[0][0];if(v=='up')o=o.map(x=>[x[0]+qp([2,4]),x[1]]);if(v=='inv')o=o.map(x=>[2*c-x[0],x[1]]);if(v=='retro')o.reverse();return o};
+const form=qp([['A','B','A','C'],['A','A','B','C'],['A','B','C','C']]),secs={};
+for(const k of new Set(form))secs[k]={prog:qp(progs).map(c=>tOk(c)?c:0),ms:[qp(motifs),qp(motifs)]};
+const ev=[],pat=[0,0,4,0,2,0,4,0];let t=0;
+for(const k of form){const s=secs[k],len=32,C=k=='C';
+let b=0,gd=0;while(b<len&&gd++<80){if(q()<.1){b+=.5;continue}for(const[d,du]of vr(qp(s.ms))){if(b>=len)break;const dd=Math.min(du,len-b),cd=s.prog[Math.floor(b/8)%4];let dn=d;
+if(b%1==0&&du>=1){for(const j of[0,1,-1,2,-2]){const mm=midi(d+j);if([0,2,4].every(o=>{const x=((mm-midi(cd+o))%12+12)%12;return x!=1&&x!=11&&x!=6})){dn=d+j;break}}}
+ev.push({t:t+b,d:dd*.9,m:midi(dn)+24,v:'brass',g:.42});ev.push({t:t+b,d:dd*.9,m:midi(dn)+(C?36:24),v:'str',g:.13});b+=du}}
+for(let bb=0;bb<len;bb++){const x=t+bb,cd=s.prog[Math.floor(bb/8)%4],fill=bb>=28,sub=(C||bb>=16)?4:2,pt=[0,0,12,0,7,0,12,midi(cd+2)-midi(cd)];
+for(let i=0;i<sub;i++)ev.push({t:x+i/sub,d:.8/sub,m:midi(cd)+pt[(bb*sub+i)%8],v:'strac',g:.22});
+if(bb%8==0)for(const o of[0,2,4,7])ev.push({t:x,d:8,m:midi(cd+o)+12,v:'str',g:.12});
+if(bb%2==0&&!fill)ev.push({t:x,d:.7,m:midi(cd),v:'timp',g:.8});
+if(bb%2==1&&!fill)ev.push({t:x,d:.3,m:0,v:'snare',g:.9});
+if(fill)for(let i=0;i<4;i++){ev.push({t:x+i*.25,d:.3,m:midi(cd)+[0,7,5,3][(bb-28)%4],v:'timp',g:.5+.12*(bb-28)});ev.push({t:x+i*.25,d:.15,m:0,v:'snare',g:.5+.12*(bb-28)})}
+if(bb%4==0)ev.push({t:x,d:1.4,m:midi(cd)-12,v:'boom',g:1});
+if(bb%16==0)ev.push({t:x,d:2.5,m:0,v:'cym',g:1});
+if(bb%8==0||bb%8==5){const off=bb%8==5?.5:0,dur=bb%8==0?.9:.35;for(const o of[0,2,4,7]){ev.push({t:x+off,d:dur,m:midi(cd+o)+12,v:'hit',g:.25});ev.push({t:x+off,d:dur,m:midi(cd+o),v:'hit',g:.2})}}}
+ev.push({t:t+28,d:4,m:0,v:'riser',g:1});t+=len}
+return{ev,bpm,len:t,battle:true}}
+const PERC=new Set(['brass','str','strac','timp','boom','cym','kick','snare','hat','hit','dlead','ost','bass2','tom','crash','riser']);
+const DC=(()=>{const n=256,c=new Float32Array(n);for(let i=0;i<n;i++)c[i]=Math.tanh((i*2/n-1)*6);return c})();
+function compose(sd,pi,fb){
+const r=mrng(sd^0x5bd1e995),pk=a=>a[Math.floor(r()*a.length)];
+const scale=pk([[0,2,4,5,7,9,11],[0,2,3,5,7,8,10],[0,2,3,5,7,9,10],[0,2,4,5,7,9,10],[0,2,4,6,7,9,11]]),L=7;
+const root=38+Math.floor(r()*12),bpm=64+Math.floor(r()*56),lead=pk(['triangle','sine','square','sawtooth']),pad=pk(['sine','triangle']);
+const durs=[.5,.5,1,1,1,1.5,2,.25,.25];
+const motifs=[];for(let m=0,nm=3+Math.floor(r()*3);m<nm;m++){let d=Math.floor(r()*L),n=[];for(let i=0,len=3+Math.floor(r()*5);i<len;i++){d+=pk([-2,-1,-1,0,1,1,2,3]);n.push([d,pk(durs)])}motifs.push(n)}
+const q=mrng((sd^0x9e3779b9)+pi*7919),qp=a=>a[Math.floor(q()*a.length)];
+const battle=fb||q()<.4;if(battle)return composeBattle(motifs,q,qp,root);
+const vary=(n)=>{const v=qp(['same','same','up','down','inv','retro','slow','fast']);let o=n.map(x=>[...x]);const c=o[0][0];
+if(v=='up'||v=='down'){const k=v=='up'?qp([1,2,4]):-qp([1,2,3]);o=o.map(x=>[x[0]+k,x[1]])}
+if(v=='inv')o=o.map(x=>[2*c-x[0],x[1]]);if(v=='retro')o.reverse();if(v=='slow')o=o.map(x=>[x[0],x[1]*2]);if(v=='fast')o=o.map(x=>[x[0],x[1]/2]);return o};
+const midi=d=>root+12*Math.floor(d/L)+scale[((d%L)+L)%L];
+const tOk=c=>{const t=(a,b)=>((midi(a)-midi(b))%12+12)%12;return[3,4].includes(t(c+2,c))&&t(c+4,c)==7};const secs={};const form=qp([['A','B','A','C'],['A','A','B','A'],['A','B','C','B','A'],['A','B','A','B']]);
+for(const k of new Set(form))secs[k]={prog:qp([[0,3,4,0],[0,5,3,4],[0,4,5,3],[5,3,0,4],[0,2,3,4]]).map(c=>tOk(c)?c:0),ms:[...Array(2)].map(()=>qp(motifs)),oct:qp([12,12,24])};
+const ev=[];let t=0;
+for(const k of form){const s=secs[k],bars=8,len=bars*4;
+let b=0,guard=0;while(b<len&&guard++<40){if(q()<.18){b+=qp([1,2]);continue}const m=vary(qp(s.ms));for(const[d,du]of m){if(b>=len)break;const dd=Math.min(du,len-b),cd=s.prog[Math.floor(b/8)%4];let dn=d;if(b%1==0&&du>=1){for(const k of[0,1,-1,2,-2]){const mm=midi(d+k);if([0,2,4].every(o=>{const x=((mm-midi(cd+o))%12+12)%12;return x!=1&&x!=11&&x!=6})){dn=d+k;break}}}ev.push({t:t+b,d:dd*.95,m:midi(dn)+s.oct,v:battle?'sawtooth':lead,g:battle?.35:.5});if(battle)ev.push({t:t+b,d:dd*.95,m:midi(dn)+s.oct+12,v:'square',g:.14});b+=du}}
+for(let c=0;c<4;c++){const cd=s.prog[c],t0=t+c*8;ev.push({t:t0,d:7.6,m:midi(cd),v:'triangle',g:.7});ev.push({t:t0+4,d:3.6,m:midi(cd+4),v:'triangle',g:.5});
+for(const o of [0,2,4])ev.push({t:t0,d:8,m:midi(cd+o)+12,v:pad,g:.18})}
+if(battle)for(let bb=0;bb<len;bb++){const x=t+bb,cd=s.prog[Math.floor(bb/8)%4];
+if(bb%2==0)ev.push({t:x,d:.3,m:0,v:'kick',g:1});else ev.push({t:x,d:.3,m:0,v:'snare',g:1});
+if(bb%4==3&&q()<.6)ev.push({t:x+.5,d:.3,m:0,v:'kick',g:1});
+ev.push({t:x,d:.1,m:0,v:'hat',g:1});ev.push({t:x+.5,d:.1,m:0,v:'hat',g:1});
+if(bb%8==0||bb%8==5){const off=bb%8==5?.5:0,dur=bb%8==0?.7:.35;for(const o of[0,2,4,7])ev.push({t:x+off,d:dur,m:midi(cd+o)+12,v:'hit',g:.22})}}
+t+=len}
+return{ev,bpm:battle?Math.min(150,bpm+28):bpm,len:t}}
+function playPiece(t0){const ctx=Mu.ctx,{ev,bpm,len,battle}=compose(Mu.seed,Mu.piece++,Mu.force),sp=60/bpm;
+const m=ctx.createGain(),comp=ctx.createDynamicsCompressor();comp.connect(ctx.destination);m.gain.value=battle?.3:.16;const dl=ctx.createDelay(1),fb=ctx.createGain();dl.delayTime.value=sp*.75;fb.gain.value=.3;m.connect(comp);m.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(comp);Mu.masters.push(m);
+const nb=ctx.createBuffer(1,Math.floor(ctx.sampleRate*1.6),ctx.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+const perc=(e,s,d)=>{const g=ctx.createGain();g.connect(m);const fq=n=>440*Math.pow(2,(n-69)/12);
+if(e.v=='dlead'){const o=ctx.createOscillator(),w=ctx.createWaveShaper(),f=ctx.createBiquadFilter(),l=ctx.createOscillator(),lg=ctx.createGain();o.type='sawtooth';o.frequency.value=fq(e.m);w.curve=DC;f.type='lowpass';f.frequency.value=3200;l.frequency.value=5.5;lg.gain.value=14;l.connect(lg);lg.connect(o.detune);g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(e.g,s+.01);g.gain.linearRampToValueAtTime(e.g*.7,s+d*.7);g.gain.linearRampToValueAtTime(0,s+d);o.connect(w);w.connect(f);f.connect(g);o.start(s);l.start(s);o.stop(s+d+.02);l.stop(s+d+.02)}
+else if(e.v=='ost'){const o=ctx.createOscillator(),f=ctx.createBiquadFilter();o.type='sawtooth';o.frequency.value=fq(e.m);f.type='lowpass';f.frequency.value=2200;g.gain.setValueAtTime(e.g,s);g.gain.exponentialRampToValueAtTime(.001,s+d);o.connect(f);f.connect(g);o.start(s);o.stop(s+d+.02)}
+else if(e.v=='bass2'){for(const[ty,sh]of[['sawtooth',0],['sine',-12]]){const o=ctx.createOscillator(),f=ctx.createBiquadFilter();o.type=ty;o.frequency.value=fq(e.m+sh);f.type='lowpass';f.frequency.value=900;o.connect(f);f.connect(g);o.start(s);o.stop(s+d+.02)}g.gain.setValueAtTime(e.g,s);g.gain.exponentialRampToValueAtTime(.001,s+d)}
+else if(e.v=='brass'||e.v=='str'||e.v=='strac'){const f=ctx.createBiquadFilter(),v=e.v;f.type='lowpass';f.connect(g);for(const dt of v=='str'?[-9,0,9]:[-5,5]){const o=ctx.createOscillator();o.type='sawtooth';o.frequency.value=fq(e.m);o.detune.value=dt;if(v=='str'){const l=ctx.createOscillator(),lg=ctx.createGain();l.frequency.value=5.5;lg.gain.value=7;l.connect(lg);lg.connect(o.detune);l.start(s);l.stop(s+d+.5)}o.connect(f);o.start(s);o.stop(s+d+.5)}
+if(v=='brass'){f.frequency.setValueAtTime(500,s);f.frequency.linearRampToValueAtTime(3200,s+.09);f.frequency.linearRampToValueAtTime(1400,s+d);g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(e.g,s+.04);g.gain.setValueAtTime(e.g*.85,s+d*.8);g.gain.linearRampToValueAtTime(0,s+d+.08)}
+else if(v=='str'){f.frequency.value=2000;g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(e.g,s+.35);g.gain.setValueAtTime(e.g,s+Math.max(.36,d-.1));g.gain.linearRampToValueAtTime(0,s+d+.3)}
+else{f.frequency.setValueAtTime(2600,s);f.frequency.exponentialRampToValueAtTime(600,s+d);g.gain.setValueAtTime(e.g,s);g.gain.exponentialRampToValueAtTime(.001,s+d)}}
+else if(e.v=='timp'||e.v=='boom'){const o=ctx.createOscillator();o.frequency.setValueAtTime(fq(e.m)*(e.v=='timp'?1.6:2),s);o.frequency.exponentialRampToValueAtTime(fq(e.m),s+.12);o.connect(g);g.gain.setValueAtTime(e.g||1,s);g.gain.exponentialRampToValueAtTime(.001,s+(e.v=='timp'?.7:1.4));o.start(s);o.stop(s+1.5)}
+else if(e.v=='cym'){const n=ctx.createBufferSource(),f=ctx.createBiquadFilter();n.buffer=nb;f.type='highpass';f.frequency.value=5000;n.connect(f);f.connect(g);g.gain.setValueAtTime(.3,s);g.gain.exponentialRampToValueAtTime(.001,s+d);n.start(s);n.stop(s+Math.min(1.5,d)+.1)}
+else if(e.v=='tom'){const o=ctx.createOscillator();o.frequency.setValueAtTime(fq(e.m+12),s);o.frequency.exponentialRampToValueAtTime(fq(e.m),s+.2);g.gain.setValueAtTime(.9,s);g.gain.exponentialRampToValueAtTime(.001,s+.25);o.connect(g);o.start(s);o.stop(s+.27)}
+else if(e.v=='crash'){const n=ctx.createBufferSource(),f=ctx.createBiquadFilter();n.buffer=nb;f.type='highpass';f.frequency.value=5000;n.connect(f);f.connect(g);g.gain.setValueAtTime(.35,s);g.gain.exponentialRampToValueAtTime(.001,s+1.4);n.start(s);n.stop(s+1.5)}
+else if(e.v=='riser'){const n=ctx.createBufferSource(),f=ctx.createBiquadFilter();n.buffer=nb;f.type='bandpass';f.Q.value=2;f.frequency.setValueAtTime(300,s);f.frequency.exponentialRampToValueAtTime(7000,s+d);n.loop=true;n.connect(f);f.connect(g);g.gain.setValueAtTime(.01,s);g.gain.exponentialRampToValueAtTime(.5,s+d);g.gain.linearRampToValueAtTime(0,s+d+.05);n.start(s);n.stop(s+d+.1)}
+else if(e.v=='kick'){const o=ctx.createOscillator();o.frequency.setValueAtTime(160,s);o.frequency.exponentialRampToValueAtTime(40,s+.12);g.gain.setValueAtTime(.9,s);g.gain.exponentialRampToValueAtTime(.001,s+.22);o.connect(g);o.start(s);o.stop(s+.25)}
+else if(e.v=='hit'){const o=ctx.createOscillator(),f=ctx.createBiquadFilter();o.type='sawtooth';o.frequency.value=440*Math.pow(2,(e.m-69)/12);f.type='lowpass';f.frequency.setValueAtTime(3000,s);f.frequency.exponentialRampToValueAtTime(500,s+d);g.gain.setValueAtTime(e.g,s);g.gain.exponentialRampToValueAtTime(.001,s+d);o.connect(f);f.connect(g);o.start(s);o.stop(s+d+.02)}
+else{const n=ctx.createBufferSource(),f=ctx.createBiquadFilter(),dd=e.v=='hat'?.05:.16;n.buffer=nb;f.type='highpass';f.frequency.value=e.v=='hat'?7000:1500;n.connect(f);f.connect(g);g.gain.setValueAtTime(e.v=='hat'?.22:.5,s);g.gain.exponentialRampToValueAtTime(.001,s+dd);n.start(s);n.stop(s+dd+.02)}};
+for(const e of ev){if(PERC.has(e.v)){perc(e,t0+e.t*sp,e.d*sp);continue}const o=ctx.createOscillator(),g=ctx.createGain(),s=t0+e.t*sp,d=e.d*sp;o.type=e.v;o.frequency.value=440*Math.pow(2,(e.m-69)/12);
+g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(e.g,s+Math.min(.05,d/4));g.gain.linearRampToValueAtTime(e.g*.6,s+d*.6);g.gain.linearRampToValueAtTime(0,s+d);o.connect(g);g.connect(m);o.start(s);o.stop(s+d+.05)}
+const end=t0+len*sp;Mu.timer=setTimeout(()=>{if(Mu.on)playPiece(end)},Math.max(500,(end-ctx.currentTime-4)*1000));return end}
+function musicStart(){if(!Mu.on)return;if(!Mu.ctx)Mu.ctx=new (window.AudioContext||window.webkitAudioContext)();Mu.ctx.resume();if(Mu.seed===seed&&Mu.timer)return;Mu.force=false;musicStop();Mu.seed=seed;Mu.piece=0;playPiece(Mu.ctx.currentTime+.3)}
+function musicStop(){clearTimeout(Mu.timer);Mu.timer=null;for(const m of Mu.masters){m.gain.value=0;setTimeout(()=>m.disconnect(),100)}Mu.masters=[]}
+$('menu').insertAdjacentHTML('beforeend','<label><input type="checkbox" id="mus" checked> Music</label>');
+$('mus').onchange=e=>{Mu.on=e.target.checked;if(Mu.on)musicStart();else{musicStop();Mu.seed=null}};
+addEventListener('pointerdown',()=>{if(Mu.on&&!Mu.timer)musicStart()});addEventListener('keydown',()=>{if(Mu.on&&!Mu.timer)musicStart()});
+setInterval(()=>{if(Mu.on&&Mu.ctx&&Mu.seed!==seed)musicStart()},500);
+let boss={n:0,t:0,done:false,on:false};
+document.body.insertAdjacentHTML('beforeend','<div id="boss" style="position:fixed;left:50%;top:70px;transform:translateX(-50%);width:min(420px,90vw);background:#fff;color:#222;border:2px solid #e33;border-radius:8px;padding:8px 12px;display:none;z-index:9;pointer-events:none"><b>👑 THE BANNER</b><div style="background:#ddd;height:8px;margin:4px 0"><div id="bhp" style="background:#e33;height:8px;width:100%"></div></div><div id="bsay" style="font-weight:600"></div></div>');
+function bossReset(){boss={n:0,t:0,done:false,on:false};const e=document.getElementById('boss');if(e)e.style.display='none'}
+function bossSay(t){$('boss').style.display='block';$('bsay').textContent=t;$('bhp').style.width=Math.max(0,(16-boss.n)/16*100)+'%'}
+const isRouterDef=d=>d.t=='conveyor'&&d.id==-1,WALL={t:'wall',id:0,size:1,power:0,cost:{}};
+const BL={delete:['Nope. Deleted.','Not on my watch.','*snip*'],conveyor:['Duh, you should use this instead.','A conveyor. That is literally what they are for.'],block:['You shall not pass! (There is a block there now.)','Placement denied. Skill issue.'],shuffle:['Five? Let me fix that to four.','Nice chain. Shame if something happened to it.'],threat:['One more and I unresearch conveyor -1!','Keep going and your router gets unresearched. Do not test me.']};
+const SEQ=['delete','conveyor','block','threat','shuffle','conveyor','delete','block','threat','shuffle','conveyor','delete','block','shuffle','threat'];
+const nb4=(x,y)=>[[x+1,y],[x-1,y],[x,y+1],[x,y-1]];
+function wouldChain(p){const seen=new Set(),st=[],over=new Set(p.over);const go=(x,y)=>{for(const[a,b]of nb4(x,y)){const o=at(a,b);if(o&&isRouter(o)&&!over.has(o)&&!seen.has(o)){seen.add(o);st.push(o)}}};go(p.x,p.y);while(st.length){const a=st.pop();go(a.x,a.y)}return seen.size+1>=5}
+function battleMusic(){if(!Mu.on)return;if(!Mu.ctx)Mu.ctx=new (window.AudioContext||window.webkitAudioContext)();Mu.ctx.resume();musicStop();Mu.force=true;Mu.seed=seed;Mu.piece=0;playPiece(Mu.ctx.currentTime+.2)}
+function bossAttempt(d,p){const now=performance.now();if(now-boss.t<600)return;boss.t=now;if(!boss.on){boss.on=true;battleMusic()}boss.n++;const x=p.x,y=p.y;
+if(boss.n>=16){add(d,p);bossSay('...Fine. You win. Use your routers.');boss.done=true;musicStop();Mu.force=false;Mu.timer=setTimeout(()=>{Mu.timer=null;if(Mu.on)musicStart()},20000);setTimeout(()=>{if(boss.done)$('boss').style.display='none'},7000);return}
+const act=SEQ[boss.n-1],ls=BL[act];bossSay(ls[Math.floor(Math.random()*ls.length)]);
+if(act=='delete'){add(d,p);const b=at(x,y);setTimeout(()=>{if(blocks.includes(b))del(b)},450)}
+else if(act=='conveyor'){add(d,p);setTimeout(()=>{const b=at(x,y);if(b&&isRouter(b)){del(b);add(def('conveyor',1),{x,y})}},500)}
+else if(act=='block'){add(WALL,{x,y});const b=at(x,y);setTimeout(()=>{if(blocks.includes(b))del(b)},4000)}
+else if(act=='shuffle'){add(d,p);const adj=nb4(x,y).map(([a,b])=>at(a,b)).filter(o=>o&&isRouter(o));const v=adj[Math.floor(Math.random()*adj.length)];setTimeout(()=>{if(v&&blocks.includes(v))del(v)},450)}}
+let last=performance.now();init();
+(function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;if(!paused){const v=12/zoom*60*dt*(zoom/40+.3)/1.3*(keys.shift?2:1);if(keys.w)cam.y-=v;if(keys.s)cam.y+=v;if(keys.a)cam.x-=v;if(keys.d)cam.x+=v;step(dt)}draw();requestAnimationFrame(loop)})(last);
+</script></body></html>
